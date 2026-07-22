@@ -44,7 +44,7 @@ if datos["ultima_fecha_examen"]:
         datos["racha"] = 0
         guardar_datos(datos)
 
-# Estilos CSS personalizados para centrar títulos y mejorar botones en móvil
+# Estilos CSS personalizados
 st.markdown(
     """
     <style>
@@ -54,15 +54,11 @@ st.markdown(
         font-size: 1.1rem !important;
         font-weight: bold;
         border-radius: 12px;
-        margin-bottom: 10px;
+        margin-bottom: 12px;
     }
     .titulo-centrado {
         text-align: center;
         margin-bottom: 1rem;
-    }
-    .subtitulo-centrado {
-        text-align: center;
-        margin-bottom: 1.5rem;
     }
     </style>
 """,
@@ -73,6 +69,7 @@ st.markdown(
 
 # ----------------- PANTALLA: MENÚ PRINCIPAL -----------------
 if st.session_state.pantalla == "menu":
+    # Cabecera con título y racha
     col_titulo, col_racha = st.columns([2, 1])
     with col_titulo:
         st.markdown(
@@ -83,22 +80,22 @@ if st.session_state.pantalla == "menu":
         st.metric(label="Racha", value=f"🔥 {datos['racha']}")
 
     st.markdown("---")
-    st.markdown(
-        "<h3 class='subtitulo-centrado'>Selecciona una opción:</h3>",
-        unsafe_allow_html=True,
-    )
 
-    if st.button("➕ Añadir Palabra"):
-        st.session_state.pantalla = "add"
-        st.rerun()
+    # Centrado estético de los botones utilizando columnas
+    col_izq, col_centro, col_der = st.columns([0.1, 0.8, 0.1])
 
-    if st.button("📝 Examen Diario"):
-        st.session_state.pantalla = "examen"
-        st.rerun()
+    with col_centro:
+        if st.button("➕ Añadir Palabra"):
+            st.session_state.pantalla = "add"
+            st.rerun()
 
-    if st.button("📊 Ver Vocabulario"):
-        st.session_state.pantalla = "lista"
-        st.rerun()
+        if st.button("📝 Examen Diario"):
+            st.session_state.pantalla = "examen"
+            st.rerun()
+
+        if st.button("📊 Ver Vocabulario"):
+            st.session_state.pantalla = "lista"
+            st.rerun()
 
 
 # ----------------- PANTALLA: AÑADIR PALABRA -----------------

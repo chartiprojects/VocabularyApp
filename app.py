@@ -43,7 +43,7 @@ if datos["ultima_fecha_examen"]:
         datos["racha"] = 0
         guardar_datos(datos)
 
-# Estilos CSS para botones
+# Estilos CSS personalizados
 st.markdown(
     """
     <style>
@@ -81,7 +81,7 @@ if st.session_state.pantalla == "menu":
         st.session_state.pantalla = "examen"
         st.rerun()
 
-    if st.button("📊 Ver Vocabulario"):
+    if st.button("📊 Ver / Editar Vocabulario"):
         st.session_state.pantalla = "lista"
         st.rerun()
 
@@ -109,7 +109,7 @@ elif st.session_state.pantalla == "add":
                 }
                 datos["palabras"].append(nueva_palabra)
                 guardar_datos(datos)
-                st.success(f"✅ Palabra añadida: '{esp}' -> '{ing}'")
+                st.success(f"✅ Palabra añadida: '{esp.capitalize()}' -> '{ing}'")
 
     st.markdown("---")
     if st.button("🏠 Volver al Menú Principal"):
@@ -134,7 +134,6 @@ elif st.session_state.pantalla == "examen":
             ]
             lista_falladas = [p for p in datos["palabras"] if p["fallada"]]
 
-            # Necesitamos al menos 10 palabras en total en la base de datos
             if len(datos["palabras"]) < 10:
                 st.warning(
                     f"⚠️ Necesitas al menos 10 palabras guardadas para poder hacer el examen (tienes {len(datos['palabras'])})."
@@ -143,16 +142,13 @@ elif st.session_state.pantalla == "examen":
                     st.session_state.pantalla = "menu"
                     st.rerun()
             else:
-                # 1. Cogemos hasta 5 de falladas (o las que haya disponibles)
                 num_falladas_a_coger = min(5, len(lista_falladas))
                 bloque_falladas = random.sample(
                     lista_falladas, num_falladas_a_coger
                 )
 
-                # 2. El resto (hasta llegar a 10) se completa con palabras generales
                 num_generales_necesarias = 10 - len(bloque_falladas)
 
-                # Si no hay suficientes generales, se cogen las que haya
                 if len(lista_generales) >= num_generales_necesarias:
                     bloque_generales = random.sample(
                         lista_generales, num_generales_necesarias
@@ -160,7 +156,6 @@ elif st.session_state.pantalla == "examen":
                 else:
                     bloque_generales = lista_generales
 
-                # Mezclamos las preguntas para que no salgan ordenadas por tipo
                 preguntas_examen = bloque_falladas + bloque_generales
                 random.shuffle(preguntas_examen)
 
@@ -169,31 +164,28 @@ elif st.session_state.pantalla == "examen":
 
         if "examen_preguntas" in st.session_state:
             if "examen_completado" not in st.session_state:
-                st.write(
-                    f"Responde a las {len(st.session_state.examen_preguntas)} preguntas:"
-                )
+                st.write("Escribe la traducción en inglés:")
 
                 with st.form("form_examen"):
                     for idx, p in enumerate(
                         st.session_state.examen_preguntas, start=1
                     ):
-                        st.write(
-                            f"**Pregunta {idx}:** ¿Cómo se dice **'{p['es']}'**?"
-                        )
-                        st.session_state.respuestas_usuario[idx] = (
-                            st.text_input("Inglés:", key=f"q_{idx}")
+                        palabra_es_capital = p["es"].capitalize()
+                        st.text_input(
+                            f"{idx}. {palabra_es_capital}", key=f"q_{idx}"
                         )
 
                     enviar = st.form_submit_button("Enviar Examen")
 
                 if enviar:
                     aciertos_totales = 0
+                    resumen_resultados = []
 
                     for idx, p in enumerate(
                         st.session_state.examen_preguntas, start=1
                     ):
                         resp = (
-                            st.session_state.respuestas_usuario[idx]
+                            st.session_state.get(f"q_{idx}", "")
                             .strip()
                             .lower()
                         )
@@ -204,23 +196,31 @@ elif st.session_state.pantalla == "examen":
                             if item["es"] == p["es"]
                         )
 
-                        if resp == correcta:
+                        es_correcto = resp == correcta
+
+                        if es_correcto:
                             aciertos_totales += 1
-                            st.write(f"✅ **{p['es']}**: ¡Correcto!")
+                            resumen_resultados.append({
+                                "es": p["es"].capitalize(),
+                                "tu_resp": resp,
+                                "correcta": correcta,
+                                "es_correcto": True,
+                            })
                             if palabra_ref["fallada"]:
                                 palabra_ref["aciertos_recuperacion"] += 1
                                 if palabra_ref["aciertos_recuperacion"] >= 3:
                                     palabra_ref["fallada"] = False
                                     palabra_ref["aciertos_recuperacion"] = 0
-                                    st.caption(
-                                        f"🎓 ¡'{p['es']}' graduada y devuelta a la lista general!"
-                                    )
                         else:
-                            st.write(f"❌ **{p['es']}**: Era *{correcta}*")
+                            resumen_resultados.append({
+                                "es": p["es"].capitalize(),
+                                "tu_resp": resp if resp else "(Vacío)",
+                                "correcta": correcta,
+                                "es_correcto": False,
+                            })
                             palabra_ref["fallada"] = True
                             palabra_ref["aciertos_recuperacion"] = 0
 
-                    # Lógica de Racha
                     if datos["ultima_fecha_examen"] == ayer:
                         datos["racha"] += 1
                     else:
@@ -234,6 +234,7 @@ elif st.session_state.pantalla == "examen":
                     st.session_state.total_preguntas = len(
                         st.session_state.examen_preguntas
                     )
+                    st.session_state.resumen_resultados = resumen_resultados
                     st.rerun()
 
             else:
@@ -243,36 +244,88 @@ elif st.session_state.pantalla == "examen":
                     f"Resultado: {st.session_state.nota_final} / {st.session_state.total_preguntas} aciertos"
                 )
 
+                st.markdown("---")
+                st.subheader("📋 Resumen del Examen:")
+
+                for item in st.session_state.resumen_resultados:
+                    if item["es_correcto"]:
+                        st.markdown(
+                            f"✅ **{item['es']}**: {item['tu_resp']} *(¡Correcto!)*"
+                        )
+                    else:
+                        st.markdown(
+                            f"❌ **{item['es']}**: Tu respuesta: ~~{item['tu_resp']}~~ ➔ **Correcta: {item['correcta']}**"
+                        )
+
+                st.markdown("---")
                 if st.button("🏠 Volver al Menú Principal"):
                     del st.session_state.examen_preguntas
                     del st.session_state.examen_completado
                     del st.session_state.nota_final
                     del st.session_state.total_preguntas
+                    del st.session_state.resumen_resultados
                     st.session_state.pantalla = "menu"
                     st.rerun()
 
 
-# ----------------- PANTALLA: VER VOCABULARIO -----------------
+# ----------------- PANTALLA: VER Y EDITAR VOCABULARIO -----------------
 elif st.session_state.pantalla == "lista":
     st.title("📊 Tu Vocabulario")
 
     tab1, tab2 = st.tabs(["🟢 Generales", "🔴 Repositorio de Fallos"])
 
+    def mostrar_tabla_ordenada(lista_palabras):
+        # Ordenar alfabéticamente por la palabra en inglés ('en')
+        lista_ordenada = sorted(lista_palabras, key=lambda x: x["en"].lower())
+
+        # Cabecera de la tabla
+        c1, c2, c3 = st.columns([2, 2, 1])
+        with c1:
+            st.markdown("**Inglés (A-Z)**")
+        with c2:
+            st.markdown("**Español**")
+        with c3:
+            st.markdown("**Acción**")
+        st.markdown("---")
+
+        # Filas ordenadas
+        for idx, p in enumerate(lista_ordenada):
+            col1, col2, col3 = st.columns([2, 2, 1])
+            with col1:
+                st.write(f"🔤 **{p['en']}**")
+            with col2:
+                # Si está en falladas, muestra los aciertos acumulados
+                extra = f" *({p['aciertos_recuperacion']}/3)*" if p["fallada"] else ""
+                st.write(f"{p['es'].capitalize()}{extra}")
+            with col3:
+                # Desplegable para editar
+                with st.expander("✏️"):
+                    with st.form(f"edit_form_{p['es']}_{idx}"):
+                        nuevo_es = st.text_input("Español", value=p["es"]).strip().lower()
+                        nuevo_en = st.text_input("Inglés", value=p["en"]).strip().lower()
+                        guardar_edit = st.form_submit_button("Guardar")
+
+                        if guardar_edit:
+                            if nuevo_es and nuevo_en:
+                                p["es"] = nuevo_es
+                                p["en"] = nuevo_en
+                                guardar_datos(datos)
+                                st.success("✅ Guardado")
+                                st.rerun()
+                            else:
+                                st.error("Sin campos vacíos")
+
     with tab1:
         generales = [p for p in datos["palabras"] if not p["fallada"]]
         if generales:
-            for p in generales:
-                st.write(f"• **{p['es']}** ➔ *{p['en']}*")
+            mostrar_tabla_ordenada(generales)
         else:
             st.info("No hay palabras generales aún.")
 
     with tab2:
         falladas = [p for p in datos["palabras"] if p["fallada"]]
         if falladas:
-            for p in falladas:
-                st.write(
-                    f"• **{p['es']}** ➔ *{p['en']}* *(Aciertos: {p['aciertos_recuperacion']}/3)*"
-                )
+            mostrar_tabla_ordenada(falladas)
         else:
             st.info("¡Excelente! No tienes palabras pendientes por corregir.")
 

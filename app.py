@@ -43,7 +43,7 @@ if datos["ultima_fecha_examen"]:
         datos["racha"] = 0
         guardar_datos(datos)
 
-# Estilos CSS personalizados para botones grandes y diseño móvil
+# Estilos CSS para botones
 st.markdown(
     """
     <style>
@@ -134,25 +134,44 @@ elif st.session_state.pantalla == "examen":
             ]
             lista_falladas = [p for p in datos["palabras"] if p["fallada"]]
 
-            if len(lista_generales) < 5 or len(lista_falladas) < 5:
+            # Necesitamos al menos 10 palabras en total en la base de datos
+            if len(datos["palabras"]) < 10:
                 st.warning(
-                    "⚠️ Necesitas al menos 5 palabras en la lista general y 5 en el repositorio de fallos para realizar el examen."
-                )
-                st.caption(
-                    f"Tienes actualmente: {len(lista_generales)} generales / {len(lista_falladas)} en fallos."
+                    f"⚠️ Necesitas al menos 10 palabras guardadas para poder hacer el examen (tienes {len(datos['palabras'])})."
                 )
                 if st.button("🏠 Volver al Menú Principal"):
                     st.session_state.pantalla = "menu"
                     st.rerun()
             else:
-                bloque_1 = random.sample(lista_generales, 5)
-                bloque_2 = random.sample(lista_falladas, 5)
-                st.session_state.examen_preguntas = bloque_1 + bloque_2
+                # 1. Cogemos hasta 5 de falladas (o las que haya disponibles)
+                num_falladas_a_coger = min(5, len(lista_falladas))
+                bloque_falladas = random.sample(
+                    lista_falladas, num_falladas_a_coger
+                )
+
+                # 2. El resto (hasta llegar a 10) se completa con palabras generales
+                num_generales_necesarias = 10 - len(bloque_falladas)
+
+                # Si no hay suficientes generales, se cogen las que haya
+                if len(lista_generales) >= num_generales_necesarias:
+                    bloque_generales = random.sample(
+                        lista_generales, num_generales_necesarias
+                    )
+                else:
+                    bloque_generales = lista_generales
+
+                # Mezclamos las preguntas para que no salgan ordenadas por tipo
+                preguntas_examen = bloque_falladas + bloque_generales
+                random.shuffle(preguntas_examen)
+
+                st.session_state.examen_preguntas = preguntas_examen
                 st.session_state.respuestas_usuario = {}
 
         if "examen_preguntas" in st.session_state:
             if "examen_completado" not in st.session_state:
-                st.write("Responde a las 10 preguntas:")
+                st.write(
+                    f"Responde a las {len(st.session_state.examen_preguntas)} preguntas:"
+                )
 
                 with st.form("form_examen"):
                     for idx, p in enumerate(
@@ -201,6 +220,7 @@ elif st.session_state.pantalla == "examen":
                             palabra_ref["fallada"] = True
                             palabra_ref["aciertos_recuperacion"] = 0
 
+                    # Lógica de Racha
                     if datos["ultima_fecha_examen"] == ayer:
                         datos["racha"] += 1
                     else:
@@ -211,19 +231,23 @@ elif st.session_state.pantalla == "examen":
 
                     st.session_state.examen_completado = True
                     st.session_state.nota_final = aciertos_totales
+                    st.session_state.total_preguntas = len(
+                        st.session_state.examen_preguntas
+                    )
                     st.rerun()
 
             else:
                 st.balloons()
                 st.success("🔥 **+1 DÍA DE RACHA CONSEGUIDO** 🔥")
                 st.subheader(
-                    f"Resultado: {st.session_state.nota_final} / 10 aciertos"
+                    f"Resultado: {st.session_state.nota_final} / {st.session_state.total_preguntas} aciertos"
                 )
 
                 if st.button("🏠 Volver al Menú Principal"):
                     del st.session_state.examen_preguntas
                     del st.session_state.examen_completado
                     del st.session_state.nota_final
+                    del st.session_state.total_preguntas
                     st.session_state.pantalla = "menu"
                     st.rerun()
 

@@ -44,7 +44,7 @@ if datos["ultima_fecha_examen"]:
         datos["racha"] = 0
         guardar_datos(datos)
 
-# Estilos CSS personalizados
+# Estilos CSS personalizados para centrar títulos y mejorar botones en móvil
 st.markdown(
     """
     <style>
@@ -55,6 +55,14 @@ st.markdown(
         font-weight: bold;
         border-radius: 12px;
         margin-bottom: 10px;
+    }
+    .titulo-centrado {
+        text-align: center;
+        margin-bottom: 1rem;
+    }
+    .subtitulo-centrado {
+        text-align: center;
+        margin-bottom: 1.5rem;
     }
     </style>
 """,
@@ -67,12 +75,18 @@ st.markdown(
 if st.session_state.pantalla == "menu":
     col_titulo, col_racha = st.columns([2, 1])
     with col_titulo:
-        st.title("🇬🇧 Vocabulario")
+        st.markdown(
+            "<h1 class='titulo-centrado'>🇬🇧 Vocabulario</h1>",
+            unsafe_allow_html=True,
+        )
     with col_racha:
         st.metric(label="Racha", value=f"🔥 {datos['racha']}")
 
     st.markdown("---")
-    st.subheader("Selecciona una opción:")
+    st.markdown(
+        "<h3 class='subtitulo-centrado'>Selecciona una opción:</h3>",
+        unsafe_allow_html=True,
+    )
 
     if st.button("➕ Añadir Palabra"):
         st.session_state.pantalla = "add"
@@ -89,7 +103,10 @@ if st.session_state.pantalla == "menu":
 
 # ----------------- PANTALLA: AÑADIR PALABRA -----------------
 elif st.session_state.pantalla == "add":
-    st.title("➕ Añadir palabra")
+    st.markdown(
+        "<h1 class='titulo-centrado'>➕ Añadir palabra</h1>",
+        unsafe_allow_html=True,
+    )
 
     with st.form("form_add_word", clear_on_submit=True):
         esp = st.text_input("Español").strip().lower()
@@ -110,7 +127,9 @@ elif st.session_state.pantalla == "add":
                 }
                 datos["palabras"].append(nueva_palabra)
                 guardar_datos(datos)
-                st.success(f"✅ Palabra añadida: '{esp.capitalize()}' -> '{ing}'")
+                st.success(
+                    f"✅ Palabra añadida: '{esp.capitalize()}' -> '{ing.capitalize()}'"
+                )
 
     st.markdown("---")
     if st.button("🏠 Volver al Menú Principal"):
@@ -120,7 +139,10 @@ elif st.session_state.pantalla == "add":
 
 # ----------------- PANTALLA: EXAMEN DIARIO -----------------
 elif st.session_state.pantalla == "examen":
-    st.title("📝 Examen Diario")
+    st.markdown(
+        "<h1 class='titulo-centrado'>📝 Examen Diario</h1>",
+        unsafe_allow_html=True,
+    )
 
     if datos["ultima_fecha_examen"] == hoy:
         st.success("🎉 ¡Ya has completado tu examen de hoy!")
@@ -203,8 +225,8 @@ elif st.session_state.pantalla == "examen":
                             aciertos_totales += 1
                             resumen_resultados.append({
                                 "es": p["es"].capitalize(),
-                                "tu_resp": resp,
-                                "correcta": correcta,
+                                "tu_resp": resp.capitalize(),
+                                "correcta": correcta.capitalize(),
                                 "es_correcto": True,
                             })
                             if palabra_ref["fallada"]:
@@ -215,8 +237,10 @@ elif st.session_state.pantalla == "examen":
                         else:
                             resumen_resultados.append({
                                 "es": p["es"].capitalize(),
-                                "tu_resp": resp if resp else "(Vacío)",
-                                "correcta": correcta,
+                                "tu_resp": (
+                                    resp.capitalize() if resp else "(Vacío)"
+                                ),
+                                "correcta": correcta.capitalize(),
                                 "es_correcto": False,
                             })
                             palabra_ref["fallada"] = True
@@ -271,7 +295,10 @@ elif st.session_state.pantalla == "examen":
 
 # ----------------- PANTALLA: VER VOCABULARIO -----------------
 elif st.session_state.pantalla == "lista":
-    st.title("📊 Tu Vocabulario")
+    st.markdown(
+        "<h1 class='titulo-centrado'>📊 Tu Vocabulario</h1>",
+        unsafe_allow_html=True,
+    )
 
     tab1, tab2 = st.tabs(["🟢 Generales", "🔴 Repositorio de Fallos"])
 
@@ -280,10 +307,10 @@ elif st.session_state.pantalla == "lista":
             st.info("No hay palabras en esta categoría.")
             return
 
-        # 1. Apartado superior de edición
         with st.expander("✏️ Editar una palabra de esta lista"):
             opciones_editar = [
-                f"{p['en']} -> {p['es'].capitalize()}" for p in lista_palabras
+                f"{p['en'].capitalize()} -> {p['es'].capitalize()}"
+                for p in lista_palabras
             ]
             seleccion = st.selectbox(
                 "Elige la palabra a modificar:",
@@ -296,12 +323,16 @@ elif st.session_state.pantalla == "lista":
                 palabra_sel = lista_palabras[idx_sel]
 
                 with st.form(f"form_editar_{clave_modo}"):
-                    edit_ing = st.text_input(
-                        "Inglés", value=palabra_sel["en"]
-                    ).strip().lower()
-                    edit_esp = st.text_input(
-                        "Español", value=palabra_sel["es"]
-                    ).strip().lower()
+                    edit_ing = (
+                        st.text_input("Inglés", value=palabra_sel["en"])
+                        .strip()
+                        .lower()
+                    )
+                    edit_esp = (
+                        st.text_input("Español", value=palabra_sel["es"])
+                        .strip()
+                        .lower()
+                    )
                     btn_guardar = st.form_submit_button("Guardar Cambios")
 
                     if btn_guardar:
@@ -314,14 +345,12 @@ elif st.session_state.pantalla == "lista":
                         else:
                             st.error("No dejes campos vacíos.")
 
-        # 2. Ordenar alfabéticamente por la palabra en inglés
         lista_ordenada = sorted(lista_palabras, key=lambda x: x["en"].lower())
 
-        # 3. Crear DataFrame limpio de Pandas para renderizar la tabla limpia
         df_datos = []
         for p in lista_ordenada:
             fila = {
-                "Inglés": p["en"],
+                "Inglés": p["en"].capitalize(),
                 "Español": p["es"].capitalize(),
             }
             if p["fallada"]:
@@ -329,8 +358,6 @@ elif st.session_state.pantalla == "lista":
             df_datos.append(fila)
 
         df = pd.DataFrame(df_datos)
-
-        # Mostrar tabla sin índices numéricos molestos
         st.table(df)
 
     with tab1:

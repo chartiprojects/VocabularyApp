@@ -2,6 +2,7 @@ import json
 import os
 import random
 from datetime import date, timedelta
+import pandas as pd
 import streamlit as st
 
 # --- 1. CONFIGURACIÓN Y CARGA DE DATOS ---
@@ -81,7 +82,7 @@ if st.session_state.pantalla == "menu":
         st.session_state.pantalla = "examen"
         st.rerun()
 
-    if st.button("📊 Ver / Editar Vocabulario"):
+    if st.button("📊 Ver Vocabulario"):
         st.session_state.pantalla = "lista"
         st.rerun()
 
@@ -268,66 +269,77 @@ elif st.session_state.pantalla == "examen":
                     st.rerun()
 
 
-# ----------------- PANTALLA: VER Y EDITAR VOCABULARIO -----------------
+# ----------------- PANTALLA: VER VOCABULARIO -----------------
 elif st.session_state.pantalla == "lista":
     st.title("📊 Tu Vocabulario")
 
     tab1, tab2 = st.tabs(["🟢 Generales", "🔴 Repositorio de Fallos"])
 
-    def mostrar_tabla_ordenada(lista_palabras):
-        # Ordenar alfabéticamente por la palabra en inglés ('en')
+    def construir_vista_tabla(lista_palabras, clave_modo):
+        if not lista_palabras:
+            st.info("No hay palabras en esta categoría.")
+            return
+
+        # 1. Apartado superior de edición
+        with st.expander("✏️ Editar una palabra de esta lista"):
+            opciones_editar = [
+                f"{p['en']} -> {p['es'].capitalize()}" for p in lista_palabras
+            ]
+            seleccion = st.selectbox(
+                "Elige la palabra a modificar:",
+                opciones_editar,
+                key=f"select_{clave_modo}",
+            )
+
+            if seleccion:
+                idx_sel = opciones_editar.index(seleccion)
+                palabra_sel = lista_palabras[idx_sel]
+
+                with st.form(f"form_editar_{clave_modo}"):
+                    edit_ing = st.text_input(
+                        "Inglés", value=palabra_sel["en"]
+                    ).strip().lower()
+                    edit_esp = st.text_input(
+                        "Español", value=palabra_sel["es"]
+                    ).strip().lower()
+                    btn_guardar = st.form_submit_button("Guardar Cambios")
+
+                    if btn_guardar:
+                        if edit_ing and edit_esp:
+                            palabra_sel["en"] = edit_ing
+                            palabra_sel["es"] = edit_esp
+                            guardar_datos(datos)
+                            st.success("✅ ¡Palabra actualizada!")
+                            st.rerun()
+                        else:
+                            st.error("No dejes campos vacíos.")
+
+        # 2. Ordenar alfabéticamente por la palabra en inglés
         lista_ordenada = sorted(lista_palabras, key=lambda x: x["en"].lower())
 
-        # Cabecera de la tabla
-        c1, c2, c3 = st.columns([2, 2, 1])
-        with c1:
-            st.markdown("**Inglés (A-Z)**")
-        with c2:
-            st.markdown("**Español**")
-        with c3:
-            st.markdown("**Acción**")
-        st.markdown("---")
+        # 3. Crear DataFrame limpio de Pandas para renderizar la tabla limpia
+        df_datos = []
+        for p in lista_ordenada:
+            fila = {
+                "Inglés": p["en"],
+                "Español": p["es"].capitalize(),
+            }
+            if p["fallada"]:
+                fila["Aciertos"] = f"{p['aciertos_recuperacion']}/3"
+            df_datos.append(fila)
 
-        # Filas ordenadas
-        for idx, p in enumerate(lista_ordenada):
-            col1, col2, col3 = st.columns([2, 2, 1])
-            with col1:
-                st.write(f"🔤 **{p['en']}**")
-            with col2:
-                # Si está en falladas, muestra los aciertos acumulados
-                extra = f" *({p['aciertos_recuperacion']}/3)*" if p["fallada"] else ""
-                st.write(f"{p['es'].capitalize()}{extra}")
-            with col3:
-                # Desplegable para editar
-                with st.expander("✏️"):
-                    with st.form(f"edit_form_{p['es']}_{idx}"):
-                        nuevo_es = st.text_input("Español", value=p["es"]).strip().lower()
-                        nuevo_en = st.text_input("Inglés", value=p["en"]).strip().lower()
-                        guardar_edit = st.form_submit_button("Guardar")
+        df = pd.DataFrame(df_datos)
 
-                        if guardar_edit:
-                            if nuevo_es and nuevo_en:
-                                p["es"] = nuevo_es
-                                p["en"] = nuevo_en
-                                guardar_datos(datos)
-                                st.success("✅ Guardado")
-                                st.rerun()
-                            else:
-                                st.error("Sin campos vacíos")
+        # Mostrar tabla sin índices numéricos molestos
+        st.table(df)
 
     with tab1:
         generales = [p for p in datos["palabras"] if not p["fallada"]]
-        if generales:
-            mostrar_tabla_ordenada(generales)
-        else:
-            st.info("No hay palabras generales aún.")
+        construir_vista_tabla(generales, "generales")
 
     with tab2:
         falladas = [p for p in datos["palabras"] if p["fallada"]]
-        if falladas:
-            mostrar_tabla_ordenada(falladas)
-        else:
-            st.info("¡Excelente! No tienes palabras pendientes por corregir.")
+        construir_vista_tabla(falladas, "falladas")
 
     st.markdown("---")
     if st.button("🏠 Volver al Menú Principal"):

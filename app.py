@@ -44,21 +44,31 @@ if datos["ultima_fecha_examen"]:
         datos["racha"] = 0
         guardar_datos(datos)
 
-# Estilos CSS personalizados
+# Estilos CSS personalizados para centrar todo el contenido
 st.markdown(
     """
     <style>
+    /* Centrar el contenedor principal de la app */
+    .main .block-container {
+        max-width: 500px;
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+        margin: 0 auto;
+    }
+    
+    /* Centrar texto e imágenes */
+    .stMarkdown, h1, h2, h3, p {
+        text-align: center;
+    }
+
+    /* Estilo de botones centrados y grandes */
     div.stButton > button {
-        width: 100%;
+        width: 100% !important;
         height: 3.5rem;
         font-size: 1.1rem !important;
         font-weight: bold;
         border-radius: 12px;
         margin-bottom: 12px;
-    }
-    .titulo-centrado {
-        text-align: center;
-        margin-bottom: 1rem;
     }
     </style>
 """,
@@ -69,41 +79,29 @@ st.markdown(
 
 # ----------------- PANTALLA: MENÚ PRINCIPAL -----------------
 if st.session_state.pantalla == "menu":
-    # Cabecera con título y racha
-    col_titulo, col_racha = st.columns([2, 1])
-    with col_titulo:
-        st.markdown(
-            "<h1 class='titulo-centrado'>🇬🇧 Vocabulario</h1>",
-            unsafe_allow_html=True,
-        )
-    with col_racha:
-        st.metric(label="Racha", value=f"🔥 {datos['racha']}")
+    # Cabecera
+    st.title("🇬🇧 Vocabulario")
+    st.metric(label="Racha Actual", value=f"🔥 {datos['racha']} días")
 
     st.markdown("---")
 
-    # Centrado estético de los botones utilizando columnas
-    col_izq, col_centro, col_der = st.columns([0.1, 0.8, 0.1])
+    # Botones principales centrados en bloque
+    if st.button("➕ Añadir Palabra"):
+        st.session_state.pantalla = "add"
+        st.rerun()
 
-    with col_centro:
-        if st.button("➕ Añadir Palabra"):
-            st.session_state.pantalla = "add"
-            st.rerun()
+    if st.button("📝 Examen Diario"):
+        st.session_state.pantalla = "examen"
+        st.rerun()
 
-        if st.button("📝 Examen Diario"):
-            st.session_state.pantalla = "examen"
-            st.rerun()
-
-        if st.button("📊 Ver Vocabulario"):
-            st.session_state.pantalla = "lista"
-            st.rerun()
+    if st.button("📊 Ver Vocabulario"):
+        st.session_state.pantalla = "lista"
+        st.rerun()
 
 
 # ----------------- PANTALLA: AÑADIR PALABRA -----------------
 elif st.session_state.pantalla == "add":
-    st.markdown(
-        "<h1 class='titulo-centrado'>➕ Añadir palabra</h1>",
-        unsafe_allow_html=True,
-    )
+    st.title("➕ Añadir palabra")
 
     with st.form("form_add_word", clear_on_submit=True):
         esp = st.text_input("Español").strip().lower()
@@ -136,10 +134,7 @@ elif st.session_state.pantalla == "add":
 
 # ----------------- PANTALLA: EXAMEN DIARIO -----------------
 elif st.session_state.pantalla == "examen":
-    st.markdown(
-        "<h1 class='titulo-centrado'>📝 Examen Diario</h1>",
-        unsafe_allow_html=True,
-    )
+    st.title("📝 Examen Diario")
 
     if datos["ultima_fecha_examen"] == hoy:
         st.success("🎉 ¡Ya has completado tu examen de hoy!")
@@ -292,10 +287,7 @@ elif st.session_state.pantalla == "examen":
 
 # ----------------- PANTALLA: VER VOCABULARIO -----------------
 elif st.session_state.pantalla == "lista":
-    st.markdown(
-        "<h1 class='titulo-centrado'>📊 Tu Vocabulario</h1>",
-        unsafe_allow_html=True,
-    )
+    st.title("📊 Tu Vocabulario")
 
     tab1, tab2 = st.tabs(["🟢 Generales", "🔴 Repositorio de Fallos"])
 

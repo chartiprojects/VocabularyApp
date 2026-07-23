@@ -4,13 +4,12 @@ import pandas as pd
 import streamlit as st
 from supabase import create_client
 
-# --- 1. CONEXIÓN A CONEXIÓN SUPABASE ---
+# --- 1. CONEXIÓN A SUPABASE ---
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
-# Funciones para leer/escribir en la nube
 def cargar_datos():
     palabras_res = supabase.table("vocabulario").select("*").execute()
     estado_res = supabase.table("estado_app").select("*").eq("id", 1).execute()
@@ -125,7 +124,7 @@ elif st.session_state.pantalla == "add":
                 st.warning("⚠️ Esa palabra ya está en tu lista.")
             else:
                 guardar_palabra_bd(esp, ing)
-                st.session_state.datos = cargar_datos()  # Recargar datos
+                st.session_state.datos = cargar_datos()
                 st.success(
                     f"✅ Palabra añadida: '{esp.capitalize()}' -> '{ing.capitalize()}'"
                 )
@@ -151,14 +150,12 @@ elif st.session_state.pantalla == "examen":
             st.rerun()
     else:
         if "examen_preguntas" not in st.session_state:
-            lista_generales = [
-                p for p in datos["palabras"] if not p["fallada"]
-            ]
+            lista_todas = datos["palabras"]
             lista_falladas = [p for p in datos["palabras"] if p["fallada"]]
 
-            if len(datos["palabras"]) < 10:
+            if len(lista_todas) < 10:
                 st.warning(
-                    f"⚠️ Necesitas al menos 10 palabras guardadas (tienes {len(datos['palabras'])})."
+                    f"⚠️ Necesitas al menos 10 palabras guardadas para hacer el examen (tienes {len(lista_todas)})."
                 )
                 if st.button("🏠 Volver al Menú Principal"):
                     st.session_state.pantalla = "menu"
@@ -169,11 +166,14 @@ elif st.session_state.pantalla == "examen":
                     lista_falladas, num_falladas_a_coger
                 )
 
+                # Las palabras del bloque general se eligen de TODAS las disponibles
+                palabras_restantes = [
+                    p for p in lista_todas if p not in bloque_falladas
+                ]
                 num_generales_necesarias = 10 - len(bloque_falladas)
-                bloque_generales = (
-                    random.sample(lista_generales, num_generales_necesarias)
-                    if len(lista_generales) >= num_generales_necesarias
-                    else lista_generales
+
+                bloque_generales = random.sample(
+                    palabras_restantes, num_generales_necesarias
                 )
 
                 preguntas_examen = bloque_falladas + bloque_generales
@@ -189,7 +189,9 @@ elif st.session_state.pantalla == "examen":
                     for idx, p in enumerate(
                         st.session_state.examen_preguntas, start=1
                     ):
-                        st.text_input(f"{idx}. {p['es'].capitalize()}", key=f"q_{idx}")
+                        st.text_input(
+                            f"{idx}. {p['es'].capitalize()}", key=f"q_{idx}"
+                        )
 
                     enviar = st.form_submit_button("Enviar Examen")
 
@@ -229,7 +231,9 @@ elif st.session_state.pantalla == "examen":
                                 else:
                                     actualizar_palabra_bd(
                                         p["id"],
-                                        {"aciertos_recuperacion": nuevos_aciertos},
+                                        {
+                                            "aciertos_recuperacion": nuevos_aciertos
+                                        },
                                     )
                         else:
                             resumen_resultados.append({
@@ -252,7 +256,6 @@ elif st.session_state.pantalla == "examen":
                     )
                     actualizar_estado_bd(nueva_racha, hoy)
 
-                    # Recargar datos locales desde Supabase
                     st.session_state.datos = cargar_datos()
                     st.session_state.examen_completado = True
                     st.session_state.nota_final = aciertos_totales
@@ -270,15 +273,16 @@ elif st.session_state.pantalla == "examen":
                 )
 
                 st.markdown("---")
-                st.subheader("📋 Resumen del Examen:")
+                st.subheader("📋 Corrección del Examen:")
 
+                # Correcciones resaltadas en Verde / Rojo
                 for item in st.session_state.resumen_resultados:
                     if item["es_correcto"]:
-                        st.markdown(
+                        st.success(
                             f"✅ **{item['es']}**: {item['tu_resp']} *(¡Correcto!)*"
                         )
                     else:
-                        st.markdown(
+                        st.error(
                             f"❌ **{item['es']}**: Tu respuesta: ~~{item['tu_resp']}~~ ➔ **Correcta: {item['correcta']}**"
                         )
 
@@ -341,9 +345,7 @@ elif st.session_state.pantalla == "lista":
                                 palabra_sel["id"],
                                 {"en": edit_ing, "es": edit_esp},
                             )
-                            st.session_state.datos = (
-                                cargar_datos()
-                            )  # Recargar datos
+                            st.session_state.datos = cargar_datos()
                             st.success("✅ ¡Palabra actualizada!")
                             st.rerun()
                         else:
@@ -365,10 +367,11 @@ elif st.session_state.pantalla == "lista":
         st.table(df)
 
     with tab1:
-        generales = [p for p in datos["palabras"] if not p["fallada"]]
-        construir_vista_tabla(generales, "generales")
+        # En la pestaña general se muestra TODO el vocabulario
+        construir_vista_tabla(datos["palabras"], "generales")
 
     with tab2:
+        # En fallos solo las marcadas como falladas
         falladas = [p for p in datos["palabras"] if p["fallada"]]
         construir_vista_tabla(falladas, "falladas")
 

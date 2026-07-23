@@ -1,35 +1,54 @@
-import json
-import os
 import random
 from datetime import date, timedelta
 import pandas as pd
 import streamlit as st
+from supabase import create_client
 
-# --- 1. CONFIGURACIÓN Y CARGA DE DATOS ---
-DATA_FILE = "vocabulario.json"
+# --- 1. CONEXIÓN A CONEXIÓN SUPABASE ---
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
+# Funciones para leer/escribir en la nube
 def cargar_datos():
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+    palabras_res = supabase.table("vocabulario").select("*").execute()
+    estado_res = supabase.table("estado_app").select("*").eq("id", 1).execute()
+
+    palabras = palabras_res.data if palabras_res.data else []
+    estado = (
+        estado_res.data[0]
+        if estado_res.data
+        else {"racha": 0, "ultima_fecha_examen": None}
+    )
+
     return {
-        "palabras": [],  # Formato: {"es": "", "en": "", "fallada": False, "aciertos_recuperacion": 0}
-        "racha": 0,
-        "ultima_fecha_examen": None,
+        "palabras": palabras,
+        "racha": estado["racha"],
+        "ultima_fecha_examen": estado["ultima_fecha_examen"],
     }
 
 
-def guardar_datos(datos):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(datos, f, ensure_ascii=False, indent=4)
+def guardar_palabra_bd(es, en):
+    supabase.table("vocabulario").insert({"es": es, "en": en}).execute()
+
+
+def actualizar_palabra_bd(id_palabra, datos_actualizar):
+    supabase.table("vocabulario").update(datos_actualizar).eq(
+        "id", id_palabra
+    ).execute()
+
+
+def actualizar_estado_bd(racha, fecha):
+    supabase.table("estado_app").update(
+        {"racha": racha, "ultima_fecha_examen": fecha}
+    ).eq("id", 1).execute()
 
 
 # Cargar datos en la sesión
 if "datos" not in st.session_state:
     st.session_state.datos = cargar_datos()
 
-# Estado de navegación entre pantallas
 if "pantalla" not in st.session_state:
     st.session_state.pantalla = "menu"
 
@@ -42,30 +61,18 @@ ayer = str(date.today() - timedelta(days=1))
 if datos["ultima_fecha_examen"]:
     if datos["ultima_fecha_examen"] not in [hoy, ayer]:
         datos["racha"] = 0
-        guardar_datos(datos)
+        actualizar_estado_bd(0, datos["ultima_fecha_examen"])
 
-# Estilos CSS personalizados para centrar botones y títulos
+# Estilos CSS
 st.markdown(
     """
     <style>
-    /* Estilo y centrado de botones */
-    div.stButton {
-        display: flex;
-        justify-content: center;
-    }
+    div.stButton { display: flex; justify-content: center; }
     div.stButton > button {
-        width: 100% !important;
-        max-width: 400px;
-        height: 3.5rem;
-        font-size: 1.1rem !important;
-        font-weight: bold;
-        border-radius: 12px;
-        margin-bottom: 12px;
+        width: 100% !important; max-width: 400px; height: 3.5rem;
+        font-size: 1.1rem !important; font-weight: bold; border-radius: 12px; margin-bottom: 12px;
     }
-    .titulo-centrado {
-        text-align: center;
-        margin-bottom: 1rem;
-    }
+    .titulo-centrado { text-align: center; margin-bottom: 1rem; }
     </style>
 """,
     unsafe_allow_html=True,
@@ -75,7 +82,6 @@ st.markdown(
 
 # ----------------- PANTALLA: MENÚ PRINCIPAL -----------------
 if st.session_state.pantalla == "menu":
-    # Restaurada la cabecera tal como estaba en el paso anterior
     col_titulo, col_racha = st.columns([2, 1])
     with col_titulo:
         st.markdown(
@@ -87,7 +93,6 @@ if st.session_state.pantalla == "menu":
 
     st.markdown("---")
 
-    # Botones centrados
     if st.button("➕ Añadir Palabra"):
         st.session_state.pantalla = "add"
         st.rerun()
@@ -119,14 +124,8 @@ elif st.session_state.pantalla == "add":
             elif any(p["es"] == esp for p in datos["palabras"]):
                 st.warning("⚠️ Esa palabra ya está en tu lista.")
             else:
-                nueva_palabra = {
-                    "es": esp,
-                    "en": ing,
-                    "fallada": False,
-                    "aciertos_recuperacion": 0,
-                }
-                datos["palabras"].append(nueva_palabra)
-                guardar_datos(datos)
+                guardar_palabra_bd(esp, ing)
+                st.session_state.datos = cargar_datos()  # Recargar datos
                 st.success(
                     f"✅ Palabra añadida: '{esp.capitalize()}' -> '{ing.capitalize()}'"
                 )
@@ -146,7 +145,7 @@ elif st.session_state.pantalla == "examen":
 
     if datos["ultima_fecha_examen"] == hoy:
         st.success("🎉 ¡Ya has completado tu examen de hoy!")
-        st.info("Vuelve mañana (a partir de las 00:00) para mantener tu racha.")
+        st.info("Vuelve mañana para mantener tu racha.")
         if st.button("🏠 Volver al Menú Principal"):
             st.session_state.pantalla = "menu"
             st.rerun()
@@ -159,7 +158,7 @@ elif st.session_state.pantalla == "examen":
 
             if len(datos["palabras"]) < 10:
                 st.warning(
-                    f"⚠️ Necesitas al menos 10 palabras guardadas para poder hacer el examen (tienes {len(datos['palabras'])})."
+                    f"⚠️ Necesitas al menos 10 palabras guardadas (tienes {len(datos['palabras'])})."
                 )
                 if st.button("🏠 Volver al Menú Principal"):
                     st.session_state.pantalla = "menu"
@@ -171,19 +170,16 @@ elif st.session_state.pantalla == "examen":
                 )
 
                 num_generales_necesarias = 10 - len(bloque_falladas)
-
-                if len(lista_generales) >= num_generales_necesarias:
-                    bloque_generales = random.sample(
-                        lista_generales, num_generales_necesarias
-                    )
-                else:
-                    bloque_generales = lista_generales
+                bloque_generales = (
+                    random.sample(lista_generales, num_generales_necesarias)
+                    if len(lista_generales) >= num_generales_necesarias
+                    else lista_generales
+                )
 
                 preguntas_examen = bloque_falladas + bloque_generales
                 random.shuffle(preguntas_examen)
 
                 st.session_state.examen_preguntas = preguntas_examen
-                st.session_state.respuestas_usuario = {}
 
         if "examen_preguntas" in st.session_state:
             if "examen_completado" not in st.session_state:
@@ -193,10 +189,7 @@ elif st.session_state.pantalla == "examen":
                     for idx, p in enumerate(
                         st.session_state.examen_preguntas, start=1
                     ):
-                        palabra_es_capital = p["es"].capitalize()
-                        st.text_input(
-                            f"{idx}. {palabra_es_capital}", key=f"q_{idx}"
-                        )
+                        st.text_input(f"{idx}. {p['es'].capitalize()}", key=f"q_{idx}")
 
                     enviar = st.form_submit_button("Enviar Examen")
 
@@ -213,15 +206,8 @@ elif st.session_state.pantalla == "examen":
                             .lower()
                         )
                         correcta = p["en"].strip().lower()
-                        palabra_ref = next(
-                            item
-                            for item in datos["palabras"]
-                            if item["es"] == p["es"]
-                        )
 
-                        es_correcto = resp == correcta
-
-                        if es_correcto:
+                        if resp == correcta:
                             aciertos_totales += 1
                             resumen_resultados.append({
                                 "es": p["es"].capitalize(),
@@ -229,11 +215,22 @@ elif st.session_state.pantalla == "examen":
                                 "correcta": correcta.capitalize(),
                                 "es_correcto": True,
                             })
-                            if palabra_ref["fallada"]:
-                                palabra_ref["aciertos_recuperacion"] += 1
-                                if palabra_ref["aciertos_recuperacion"] >= 3:
-                                    palabra_ref["fallada"] = False
-                                    palabra_ref["aciertos_recuperacion"] = 0
+
+                            if p["fallada"]:
+                                nuevos_aciertos = p["aciertos_recuperacion"] + 1
+                                if nuevos_aciertos >= 3:
+                                    actualizar_palabra_bd(
+                                        p["id"],
+                                        {
+                                            "fallada": False,
+                                            "aciertos_recuperacion": 0,
+                                        },
+                                    )
+                                else:
+                                    actualizar_palabra_bd(
+                                        p["id"],
+                                        {"aciertos_recuperacion": nuevos_aciertos},
+                                    )
                         else:
                             resumen_resultados.append({
                                 "es": p["es"].capitalize(),
@@ -243,17 +240,20 @@ elif st.session_state.pantalla == "examen":
                                 "correcta": correcta.capitalize(),
                                 "es_correcto": False,
                             })
-                            palabra_ref["fallada"] = True
-                            palabra_ref["aciertos_recuperacion"] = 0
+                            actualizar_palabra_bd(
+                                p["id"],
+                                {"fallada": True, "aciertos_recuperacion": 0},
+                            )
 
-                    if datos["ultima_fecha_examen"] == ayer:
-                        datos["racha"] += 1
-                    else:
-                        datos["racha"] = 1
+                    nueva_racha = (
+                        datos["racha"] + 1
+                        if datos["ultima_fecha_examen"] == ayer
+                        else 1
+                    )
+                    actualizar_estado_bd(nueva_racha, hoy)
 
-                    datos["ultima_fecha_examen"] = hoy
-                    guardar_datos(datos)
-
+                    # Recargar datos locales desde Supabase
+                    st.session_state.datos = cargar_datos()
                     st.session_state.examen_completado = True
                     st.session_state.nota_final = aciertos_totales
                     st.session_state.total_preguntas = len(
@@ -337,9 +337,13 @@ elif st.session_state.pantalla == "lista":
 
                     if btn_guardar:
                         if edit_ing and edit_esp:
-                            palabra_sel["en"] = edit_ing
-                            palabra_sel["es"] = edit_esp
-                            guardar_datos(datos)
+                            actualizar_palabra_bd(
+                                palabra_sel["id"],
+                                {"en": edit_ing, "es": edit_esp},
+                            )
+                            st.session_state.datos = (
+                                cargar_datos()
+                            )  # Recargar datos
                             st.success("✅ ¡Palabra actualizada!")
                             st.rerun()
                         else:

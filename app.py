@@ -53,7 +53,7 @@ if "pantalla" not in st.session_state:
 
 datos = st.session_state.datos
 
-# --- 2. GESTIÓN DE RACHA DIARIA (00:00 - 23:59) ---
+# --- 2. GESTIÓN DE RACHA DIARIA ---
 hoy = str(date.today())
 ayer = str(date.today() - timedelta(days=1))
 
@@ -142,14 +142,15 @@ elif st.session_state.pantalla == "examen":
         unsafe_allow_html=True,
     )
 
-    if datos["ultima_fecha_examen"] == hoy:
+    if datos["ultima_fecha_examen"] == hoy and "resumen_resultados" not in st.session_state:
         st.success("🎉 ¡Ya has completado tu examen de hoy!")
         st.info("Vuelve mañana para mantener tu racha.")
         if st.button("🏠 Volver al Menú Principal"):
             st.session_state.pantalla = "menu"
             st.rerun()
     else:
-        if "examen_preguntas" not in st.session_state:
+        # Preparamos las preguntas si es un examen nuevo
+        if "examen_preguntas" not in st.session_state and "resumen_resultados" not in st.session_state:
             lista_todas = datos["palabras"]
             lista_falladas = [p for p in datos["palabras"] if p["fallada"]]
 
@@ -162,139 +163,111 @@ elif st.session_state.pantalla == "examen":
                     st.rerun()
             else:
                 num_falladas_a_coger = min(5, len(lista_falladas))
-                bloque_falladas = random.sample(
-                    lista_falladas, num_falladas_a_coger
-                )
+                bloque_falladas = random.sample(lista_falladas, num_falladas_a_coger)
 
-                # Las palabras del bloque general se eligen de TODAS las disponibles
-                palabras_restantes = [
-                    p for p in lista_todas if p not in bloque_falladas
-                ]
+                palabras_restantes = [p for p in lista_todas if p not in bloque_falladas]
                 num_generales_necesarias = 10 - len(bloque_falladas)
 
-                bloque_generales = random.sample(
-                    palabras_restantes, num_generales_necesarias
-                )
+                bloque_generales = random.sample(palabras_restantes, num_generales_necesarias)
 
                 preguntas_examen = bloque_falladas + bloque_generales
                 random.shuffle(preguntas_examen)
 
                 st.session_state.examen_preguntas = preguntas_examen
 
-        if "examen_preguntas" in st.session_state:
-            if "examen_completado" not in st.session_state:
-                st.write("Escribe la traducción en inglés:")
+        # PANTALLA 1: HACIENDO EL EXAMEN
+        if "resumen_resultados" not in st.session_state and "examen_preguntas" in st.session_state:
+            st.write("Escribe la traducción en inglés:")
 
-                with st.form("form_examen"):
-                    for idx, p in enumerate(
-                        st.session_state.examen_preguntas, start=1
-                    ):
-                        st.text_input(
-                            f"{idx}. {p['es'].capitalize()}", key=f"q_{idx}"
-                        )
-
-                    enviar = st.form_submit_button("Enviar Examen")
-
-                if enviar:
-                    aciertos_totales = 0
-                    resumen_resultados = []
-
-                    for idx, p in enumerate(
-                        st.session_state.examen_preguntas, start=1
-                    ):
-                        resp = (
-                            st.session_state.get(f"q_{idx}", "")
-                            .strip()
-                            .lower()
-                        )
-                        correcta = p["en"].strip().lower()
-
-                        if resp == correcta:
-                            aciertos_totales += 1
-                            resumen_resultados.append({
-                                "es": p["es"].capitalize(),
-                                "tu_resp": resp.capitalize(),
-                                "correcta": correcta.capitalize(),
-                                "es_correcto": True,
-                            })
-
-                            if p["fallada"]:
-                                nuevos_aciertos = p["aciertos_recuperacion"] + 1
-                                if nuevos_aciertos >= 3:
-                                    actualizar_palabra_bd(
-                                        p["id"],
-                                        {
-                                            "fallada": False,
-                                            "aciertos_recuperacion": 0,
-                                        },
-                                    )
-                                else:
-                                    actualizar_palabra_bd(
-                                        p["id"],
-                                        {
-                                            "aciertos_recuperacion": nuevos_aciertos
-                                        },
-                                    )
-                        else:
-                            resumen_resultados.append({
-                                "es": p["es"].capitalize(),
-                                "tu_resp": (
-                                    resp.capitalize() if resp else "(Vacío)"
-                                ),
-                                "correcta": correcta.capitalize(),
-                                "es_correcto": False,
-                            })
-                            actualizar_palabra_bd(
-                                p["id"],
-                                {"fallada": True, "aciertos_recuperacion": 0},
-                            )
-
-                    nueva_racha = (
-                        datos["racha"] + 1
-                        if datos["ultima_fecha_examen"] == ayer
-                        else 1
+            with st.form("form_examen"):
+                respuestas_temp = {}
+                for idx, p in enumerate(st.session_state.examen_preguntas, start=1):
+                    respuestas_temp[idx] = st.text_input(
+                        f"{idx}. {p['es'].capitalize()}", key=f"q_{idx}"
                     )
-                    actualizar_estado_bd(nueva_racha, hoy)
 
-                    st.session_state.datos = cargar_datos()
-                    st.session_state.examen_completado = True
-                    st.session_state.nota_final = aciertos_totales
-                    st.session_state.total_preguntas = len(
-                        st.session_state.examen_preguntas
-                    )
-                    st.session_state.resumen_resultados = resumen_resultados
-                    st.rerun()
+                enviar = st.form_submit_button("Enviar Examen")
 
-            else:
-                st.balloons()
-                st.success("🔥 **+1 DÍA DE RACHA CONSEGUIDO** 🔥")
-                st.subheader(
-                    f"Resultado: {st.session_state.nota_final} / {st.session_state.total_preguntas} aciertos"
-                )
+            if enviar:
+                aciertos_totales = 0
+                resumen_resultados = []
 
-                st.markdown("---")
-                st.subheader("📋 Corrección del Examen:")
+                for idx, p in enumerate(st.session_state.examen_preguntas, start=1):
+                    resp = respuestas_temp[idx].strip().lower()
+                    correcta = p["en"].strip().lower()
 
-                # Correcciones resaltadas en Verde / Rojo
-                for item in st.session_state.resumen_resultados:
-                    if item["es_correcto"]:
-                        st.success(
-                            f"✅ **{item['es']}**: {item['tu_resp']} *(¡Correcto!)*"
-                        )
+                    if resp == correcta:
+                        aciertos_totales += 1
+                        resumen_resultados.append({
+                            "es": p["es"].capitalize(),
+                            "tu_resp": resp.capitalize(),
+                            "correcta": correcta.capitalize(),
+                            "es_correcto": True,
+                        })
+
+                        if p["fallada"]:
+                            nuevos_aciertos = p["aciertos_recuperacion"] + 1
+                            if nuevos_aciertos >= 3:
+                                actualizar_palabra_bd(p["id"], {"fallada": False, "aciertos_recuperacion": 0})
+                            else:
+                                actualizar_palabra_bd(p["id"], {"aciertos_recuperacion": nuevos_aciertos})
                     else:
-                        st.error(
-                            f"❌ **{item['es']}**: Tu respuesta: ~~{item['tu_resp']}~~ ➔ **Correcta: {item['correcta']}**"
-                        )
+                        resumen_resultados.append({
+                            "es": p["es"].capitalize(),
+                            "tu_resp": resp.capitalize() if resp else "(Vacío)",
+                            "correcta": correcta.capitalize(),
+                            "es_correcto": False,
+                        })
+                        actualizar_palabra_bd(p["id"], {"fallada": True, "aciertos_recuperacion": 0})
 
-                st.markdown("---")
-                if st.button("🏠 Volver al Menú Principal"):
+                nueva_racha = (
+                    datos["racha"] + 1
+                    if datos["ultima_fecha_examen"] == ayer
+                    else 1
+                )
+                actualizar_estado_bd(nueva_racha, hoy)
+
+                # Guardamos los resultados para mostrarlos en la pantalla de corrección
+                st.session_state.datos = cargar_datos()
+                st.session_state.nota_final = aciertos_totales
+                st.session_state.total_preguntas = len(st.session_state.examen_preguntas)
+                st.session_state.resumen_resultados = resumen_resultados
+                st.rerun()
+
+        # PANTALLA 2: MOSTRAR CORRECCIÓN DETALLADA
+        elif "resumen_resultados" in st.session_state:
+            st.balloons()
+            st.success("🔥 **+1 DÍA DE RACHA CONSEGUIDO** 🔥")
+            st.subheader(
+                f"Resultado: {st.session_state.nota_final} / {st.session_state.total_preguntas} aciertos"
+            )
+
+            st.markdown("---")
+            st.subheader("📋 Corrección del Examen:")
+
+            # Bloques explícitos en Verde y Rojo
+            for item in st.session_state.resumen_resultados:
+                if item["es_correcto"]:
+                    st.success(
+                        f"✅ **{item['es']}**: {item['tu_resp']} *(¡Correcto!)*"
+                    )
+                else:
+                    st.error(
+                        f"❌ **{item['es']}**: Tu respuesta: ~~{item['tu_resp']}~~ ➔ **Correcta: {item['correcta']}**"
+                    )
+
+            st.markdown("---")
+            if st.button("🏠 Volver al Menú Principal"):
+                if "examen_preguntas" in st.session_state:
                     del st.session_state.examen_preguntas
-                    del st.session_state.examen_completado
-                    del st.session_state.nota_final
-                    del st.session_state.total_preguntas
+                if "resumen_resultados" in st.session_state:
                     del st.session_state.resumen_resultados
-                    st.session_state.pantalla = "menu"
-                    st.rerun()
+                if "nota_final" in st.session_state:
+                    del st.session_state.nota_final
+                if "total_preguntas" in st.session_state:
+                    del st.session_state.total_preguntas
+                st.session_state.pantalla = "menu"
+                st.rerun()
 
 
 # ----------------- PANTALLA: VER VOCABULARIO -----------------
@@ -367,11 +340,9 @@ elif st.session_state.pantalla == "lista":
         st.table(df)
 
     with tab1:
-        # En la pestaña general se muestra TODO el vocabulario
         construir_vista_tabla(datos["palabras"], "generales")
 
     with tab2:
-        # En fallos solo las marcadas como falladas
         falladas = [p for p in datos["palabras"] if p["fallada"]]
         construir_vista_tabla(falladas, "falladas")
 
